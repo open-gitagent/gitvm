@@ -351,8 +351,15 @@ func cpURL() string {
 	return "http://localhost:" + port
 }
 
+func nodeKey() string {
+	return envStr("GITVMD_NODE_KEY", "change-me-in-production")
+}
+
 func apiGet(path string) (interface{}, error) {
-	resp, err := http.Get(cpURL() + path)
+	req, _ := http.NewRequest("GET", cpURL()+path, nil)
+	req.Header.Set("X-Node-Key", nodeKey())
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach control plane: %w", err)
 	}
@@ -370,7 +377,11 @@ func apiGet(path string) (interface{}, error) {
 
 func apiPost(path string, body interface{}) (map[string]interface{}, error) {
 	data, _ := json.Marshal(body)
-	resp, err := http.Post(cpURL()+path, "application/json", bytes.NewReader(data))
+	req, _ := http.NewRequest("POST", cpURL()+path, bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Node-Key", nodeKey())
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach control plane: %w", err)
 	}

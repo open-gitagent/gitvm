@@ -21,9 +21,13 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Node key auth (for node registration/heartbeat)
+		// Node key auth (for internal + admin endpoints)
+		nodeKey := r.Header.Get("X-Node-Key")
+		if nodeKey != "" && nodeKey == s.config.NodeKey {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/internal/") {
-			nodeKey := r.Header.Get("X-Node-Key")
 			if nodeKey == "" || nodeKey != s.config.NodeKey {
 				writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid node key")
 				return
