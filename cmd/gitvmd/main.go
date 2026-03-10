@@ -15,10 +15,39 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
+	// Defaults (env vars override, CLI flags override both)
+	homeDir, _ := os.UserHomeDir()
+	defaultDataDir := homeDir + "/.gitvmd"
+
 	port := envInt("GITVMD_PORT", 8080)
-	dataDir := envStr("GITVMD_DATA_DIR", "/var/lib/gitvmd")
-	dbPath := envStr("GITVMD_DB_PATH", dataDir+"/gitvmd.db")
+	dataDir := envStr("GITVMD_DATA_DIR", defaultDataDir)
 	nodeKey := envStr("GITVMD_NODE_KEY", "change-me-in-production")
+
+	// Parse CLI flags: gitvmd start [--port N] [--node-key K] [--data-dir D]
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "start":
+			// no-op, just skip
+		case "--port":
+			i++
+			if i < len(args) {
+				port, _ = strconv.Atoi(args[i])
+			}
+		case "--node-key":
+			i++
+			if i < len(args) {
+				nodeKey = args[i]
+			}
+		case "--data-dir":
+			i++
+			if i < len(args) {
+				dataDir = args[i]
+			}
+		}
+	}
+
+	dbPath := envStr("GITVMD_DB_PATH", dataDir+"/gitvmd.db")
 	cpURL := envStr("GITVMD_URL", fmt.Sprintf("http://localhost:%d", port))
 
 	// Ensure data dir exists
