@@ -1,0 +1,266 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gitvm — {{.Title}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-900 border-r border-gray-800 p-4 flex flex-col">
+            <div class="mb-8">
+                <h1 class="text-xl font-bold text-white">gitvm</h1>
+                <p class="text-xs text-gray-500 mt-1">sandbox control plane</p>
+            </div>
+            <nav class="flex-1 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg {{if eq .Page "dashboard"}}bg-gray-800 text-white{{else}}text-gray-400 hover:text-white hover:bg-gray-800{{end}} transition">
+                    Dashboard
+                </a>
+                <a href="/sandboxes" class="block px-3 py-2 rounded-lg {{if eq .Page "sandboxes"}}bg-gray-800 text-white{{else}}text-gray-400 hover:text-white hover:bg-gray-800{{end}} transition">
+                    Sandboxes
+                </a>
+                <a href="/nodes" class="block px-3 py-2 rounded-lg {{if eq .Page "nodes"}}bg-gray-800 text-white{{else}}text-gray-400 hover:text-white hover:bg-gray-800{{end}} transition">
+                    Nodes
+                </a>
+                <a href="/settings" class="block px-3 py-2 rounded-lg {{if eq .Page "settings"}}bg-gray-800 text-white{{else}}text-gray-400 hover:text-white hover:bg-gray-800{{end}} transition">
+                    Settings
+                </a>
+            </nav>
+            <div class="border-t border-gray-800 pt-4">
+                <a href="/login" class="text-sm text-gray-500 hover:text-white">Logout</a>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="flex-1 p-8">
+            <div id="api-url" data-url="{{.ControlPlaneURL}}" class="hidden"></div>
+
+            {{if eq .Page "dashboard"}}
+            {{template "dashboard" .}}
+            {{else if eq .Page "sandboxes"}}
+            {{template "sandboxes" .}}
+            {{else if eq .Page "nodes"}}
+            {{template "nodes" .}}
+            {{else if eq .Page "settings"}}
+            {{template "settings" .}}
+            {{end}}
+        </main>
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "dashboard"}}
+<h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <p class="text-sm text-gray-500">Active Sandboxes</p>
+        <p class="text-3xl font-bold mt-2" id="sandbox-count">—</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <p class="text-sm text-gray-500">Online Nodes</p>
+        <p class="text-3xl font-bold mt-2" id="node-count">—</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <p class="text-sm text-gray-500">Capacity</p>
+        <p class="text-3xl font-bold mt-2" id="capacity">—</p>
+    </div>
+</div>
+
+<script>
+async function loadDashboard() {
+    try {
+        const url = document.getElementById('api-url').dataset.url;
+        const resp = await fetch(url + '/health', { credentials: 'include' });
+        const data = await resp.json();
+        document.getElementById('sandbox-count').textContent = data.vms || 0;
+        document.getElementById('node-count').textContent = data.nodes || 0;
+        document.getElementById('capacity').textContent = data.nodes > 0 ? 'Active' : 'No nodes';
+    } catch(e) {
+        console.error('Dashboard load error:', e);
+    }
+}
+loadDashboard();
+setInterval(loadDashboard, 5000);
+</script>
+{{end}}
+
+{{define "sandboxes"}}
+<div class="flex items-center justify-between mb-6">
+    <h2 class="text-2xl font-bold">Sandboxes</h2>
+    <button onclick="createSandbox()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition">
+        + Create Sandbox
+    </button>
+</div>
+
+<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="border-b border-gray-800">
+            <tr class="text-left text-gray-500">
+                <th class="px-4 py-3">ID</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3">Template</th>
+                <th class="px-4 py-3">Node</th>
+                <th class="px-4 py-3">Created</th>
+                <th class="px-4 py-3">Actions</th>
+            </tr>
+        </thead>
+        <tbody id="sandbox-list">
+            <tr><td colspan="6" class="px-4 py-8 text-center text-gray-600">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+const apiUrl = document.getElementById('api-url').dataset.url;
+
+async function loadSandboxes() {
+    try {
+        const resp = await fetch(apiUrl + '/v1/sandboxes', { credentials: 'include' });
+        const data = await resp.json();
+        const tbody = document.getElementById('sandbox-list');
+
+        if (!data.sandboxes || data.sandboxes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-600">No sandboxes</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.sandboxes.map(s => `
+            <tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
+                <td class="px-4 py-3 font-mono text-xs">${s.sandboxId}</td>
+                <td class="px-4 py-3">
+                    <span class="inline-block px-2 py-1 rounded text-xs ${
+                        s.status === 'running' ? 'bg-green-900/50 text-green-400' :
+                        s.status === 'paused' ? 'bg-yellow-900/50 text-yellow-400' :
+                        'bg-red-900/50 text-red-400'
+                    }">${s.status}</span>
+                </td>
+                <td class="px-4 py-3">${s.template}</td>
+                <td class="px-4 py-3 font-mono text-xs">${s.nodeId?.slice(0,8) || '—'}</td>
+                <td class="px-4 py-3 text-gray-500">${new Date(s.createdAt).toLocaleString()}</td>
+                <td class="px-4 py-3">
+                    <button onclick="deleteSandbox('${s.sandboxId}')" class="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch(e) {
+        console.error('Load sandboxes error:', e);
+    }
+}
+
+async function createSandbox() {
+    try {
+        await fetch(apiUrl + '/v1/sandboxes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ template: 'base', vcpus: 1, memoryMB: 512 })
+        });
+        loadSandboxes();
+    } catch(e) {
+        alert('Failed to create sandbox: ' + e.message);
+    }
+}
+
+async function deleteSandbox(id) {
+    if (!confirm('Delete sandbox ' + id + '?')) return;
+    try {
+        await fetch(apiUrl + '/v1/sandboxes/' + id, { method: 'DELETE', credentials: 'include' });
+        loadSandboxes();
+    } catch(e) {
+        alert('Failed to delete: ' + e.message);
+    }
+}
+
+loadSandboxes();
+setInterval(loadSandboxes, 5000);
+</script>
+{{end}}
+
+{{define "nodes"}}
+<h2 class="text-2xl font-bold mb-6">Nodes</h2>
+
+<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="border-b border-gray-800">
+            <tr class="text-left text-gray-500">
+                <th class="px-4 py-3">Name</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3">Provider</th>
+                <th class="px-4 py-3">Region</th>
+                <th class="px-4 py-3">Sandboxes</th>
+                <th class="px-4 py-3">Last Seen</th>
+            </tr>
+        </thead>
+        <tbody id="node-list">
+            <tr><td colspan="6" class="px-4 py-8 text-center text-gray-600">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+const nodeApiUrl = document.getElementById('api-url').dataset.url;
+
+async function loadNodes() {
+    try {
+        const resp = await fetch(nodeApiUrl + '/v1/nodes', { credentials: 'include' });
+        const nodes = await resp.json();
+        const tbody = document.getElementById('node-list');
+
+        if (!nodes || nodes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-600">No nodes registered</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = nodes.map(n => `
+            <tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
+                <td class="px-4 py-3 font-medium">${n.name}</td>
+                <td class="px-4 py-3">
+                    <span class="inline-block px-2 py-1 rounded text-xs ${
+                        n.status === 'online' ? 'bg-green-900/50 text-green-400' :
+                        n.status === 'provisioning' ? 'bg-blue-900/50 text-blue-400' :
+                        n.status === 'draining' ? 'bg-yellow-900/50 text-yellow-400' :
+                        'bg-red-900/50 text-red-400'
+                    }">${n.status}</span>
+                </td>
+                <td class="px-4 py-3">${n.provider}</td>
+                <td class="px-4 py-3">${n.region || '—'}</td>
+                <td class="px-4 py-3">${n.runningSandboxes} / ${n.maxSandboxes}</td>
+                <td class="px-4 py-3 text-gray-500">${new Date(n.lastSeen).toLocaleString()}</td>
+            </tr>
+        `).join('');
+    } catch(e) {
+        console.error('Load nodes error:', e);
+    }
+}
+
+loadNodes();
+setInterval(loadNodes, 5000);
+</script>
+{{end}}
+
+{{define "settings"}}
+<h2 class="text-2xl font-bold mb-6">Settings</h2>
+
+<div class="space-y-6 max-w-2xl">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <h3 class="text-lg font-semibold mb-4">API Keys</h3>
+        <p class="text-sm text-gray-500 mb-4">Use these keys to authenticate SDK requests.</p>
+        <div id="api-keys" class="space-y-2">
+            <p class="text-gray-600 text-sm">Loading...</p>
+        </div>
+    </div>
+
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <h3 class="text-lg font-semibold mb-4">Cloud Pools</h3>
+        <p class="text-sm text-gray-500 mb-4">Configure auto-scaling node pools.</p>
+        <p class="text-gray-600 text-sm">Coming soon — configure via environment variables for now.</p>
+    </div>
+</div>
+{{end}}

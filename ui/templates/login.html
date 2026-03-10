@@ -1,0 +1,126 @@
+{{define "login"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gitvm — Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold">gitvm</h1>
+            <p class="text-gray-500 mt-2">sandbox control plane</p>
+        </div>
+
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-8">
+            <div id="error" class="hidden bg-red-900/30 border border-red-800 text-red-400 px-4 py-2 rounded-lg mb-4 text-sm"></div>
+
+            <div id="login-form">
+                <h2 class="text-xl font-semibold mb-6">Sign In</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Email</label>
+                        <input type="email" id="email" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Password</label>
+                        <input type="password" id="password" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">
+                        Sign In
+                    </button>
+                </div>
+                <p class="text-center mt-4 text-sm text-gray-500">
+                    No account? <a href="#" onclick="showRegister()" class="text-blue-400 hover:text-blue-300">Register</a>
+                </p>
+            </div>
+
+            <div id="register-form" class="hidden">
+                <h2 class="text-xl font-semibold mb-6">Register</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Email</label>
+                        <input type="email" id="reg-email" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Password</label>
+                        <input type="password" id="reg-password" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <button onclick="register()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">
+                        Register
+                    </button>
+                </div>
+                <p class="text-center mt-4 text-sm text-gray-500">
+                    Have an account? <a href="#" onclick="showLogin()" class="text-blue-400 hover:text-blue-300">Sign In</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const apiUrl = '{{.ControlPlaneURL}}';
+
+    function showRegister() {
+        document.getElementById('login-form').classList.add('hidden');
+        document.getElementById('register-form').classList.remove('hidden');
+    }
+
+    function showLogin() {
+        document.getElementById('register-form').classList.add('hidden');
+        document.getElementById('login-form').classList.remove('hidden');
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    async function login() {
+        try {
+            const resp = await fetch(apiUrl + '/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                showError(data.message || 'Login failed');
+                return;
+            }
+            window.location.href = '/';
+        } catch(e) {
+            showError('Connection error: ' + e.message);
+        }
+    }
+
+    async function register() {
+        try {
+            const resp = await fetch(apiUrl + '/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    email: document.getElementById('reg-email').value,
+                    password: document.getElementById('reg-password').value
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                showError(data.message || 'Registration failed');
+                return;
+            }
+            window.location.href = '/';
+        } catch(e) {
+            showError('Connection error: ' + e.message);
+        }
+    }
+    </script>
+</body>
+</html>
+{{end}}
