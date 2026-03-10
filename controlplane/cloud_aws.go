@@ -32,7 +32,7 @@ func (p *AWSProvider) ProvisionNode(ctx context.Context, opts ProvisionOpts) (*P
 	if instanceType == "" {
 		switch opts.Runtime {
 		case "docker":
-			instanceType = "t3.xlarge" // 4 vCPU, 16 GB — no KVM needed
+			instanceType = "t3.medium" // 2 vCPU, 4 GB — no KVM needed
 		default: // "firecracker" or empty
 			instanceType = "c8i.xlarge" // 4 vCPU, 8 GB, nested virt (KVM)
 		}
