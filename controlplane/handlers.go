@@ -248,6 +248,90 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	s.proxySandboxToNode(w, r, "GET", "/files/list")
 }
 
+// --- Node Provision Handler ---
+
+type ProvisionNodeRequest struct {
+	Provider     string `json:"provider"`               // "aws", "gcp", "azure"
+	Region       string `json:"region,omitempty"`        // override default region
+	InstanceType string `json:"instanceType,omitempty"`  // override default instance type
+	Runtime      string `json:"runtime,omitempty"`       // "docker" (default) or "firecracker"
+	Name         string `json:"name,omitempty"`          // node name (auto-generated if empty)
+}
+
+func (s *Server) handleProvisionNode(w http.ResponseWriter, r *http.Request) {
+	var req ProvisionNodeRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+
+	if req.Provider == "" {
+		req.Provider = "aws"
+	}
+	if req.Runtime == "" {
+		req.Runtime = "docker"
+	}
+	if req.Name == "" {
+		req.Name = fmt.Sprintf("gitvm-node-%s", uuid.New().String()[:8])
+	}
+
+	provider, err := s.providers.Get(req.Provider)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "provider_not_found",
+			fmt.Sprintf("provider %q not registered. Set env vars (e.g. AWS_ACCESS_KEY_ID) and restart.", req.Provider))
+		return
+	}
+
+	userData := NodeUserData(s.config.CPURL, s.config.NodeKey, req.Name, req.Runtime)
+
+	s.logger.Info("provisioning node", "provider", req.Provider, "name", req.Name, "runtime", req.Runtime)
+
+	result, err := provider.ProvisionNode(r.Context(), ProvisionOpts{
+		Name:         req.Name,
+		Region:       req.Region,
+		InstanceType: req.InstanceType,
+		Runtime:      req.Runtime,
+		UserData:     userData,
+		Tags:         map[string]string{"gitvm": "node", "runtime": req.Runtime},
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "provision_failed", err.Error())
+		return
+	}
+
+	// Record the node
+	now := time.Now().UTC()
+	node := &Node{
+		ID:           uuid.New().String(),
+		Name:         req.Name,
+		Address:      fmt.Sprintf("http://%s:9090", result.PublicIP),
+		PublicIP:     result.PublicIP,
+		Provider:     req.Provider,
+		ProviderID:   result.ProviderID,
+		Region:       result.Region,
+		InstanceType: result.InstanceType,
+		Status:       "provisioning",
+		MaxSandboxes: 50,
+		LastSeen:     now,
+		CreatedAt:    now,
+	}
+	if err := s.db.UpsertNode(node); err != nil {
+		s.logger.Error("failed to save node", "error", err)
+	}
+
+	s.logger.Info("node provisioned", "name", req.Name, "ip", result.PublicIP, "instanceType", result.InstanceType)
+
+	writeOK(w, map[string]interface{}{
+		"nodeId":       node.ID,
+		"name":         node.Name,
+		"publicIp":     result.PublicIP,
+		"providerId":   result.ProviderID,
+		"instanceType": result.InstanceType,
+		"region":       result.Region,
+		"status":       "provisioning",
+	})
+}
+
 // --- Node Handlers (internal API for nodes) ---
 
 func (s *Server) handleNodeRegister(w http.ResponseWriter, r *http.Request) {

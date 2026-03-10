@@ -74,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 
 	// --- Admin API (requires session) ---
 	mux.HandleFunc("GET /v1/nodes", s.handleListNodes)
+	mux.HandleFunc("POST /v1/nodes/provision", s.handleProvisionNode)
 
 	// --- Internal API (requires node key) ---
 	mux.HandleFunc("POST /internal/nodes/register", s.handleNodeRegister)
