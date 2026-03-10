@@ -109,17 +109,23 @@ systemctl enable docker && systemctl start docker
 	}
 
 	return fmt.Sprintf(`#!/bin/bash
-set -e
+set -ex
+
 %s%s
-# Install gitvm from GitHub
-apt-get update -y && apt-get install -y git golang-go
+
+# Install Go 1.24 (apt has older version)
+apt-get update -y && apt-get install -y git curl
+curl -fsSL https://go.dev/dl/go1.24.1.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+export PATH=/usr/local/go/bin:$PATH
 export GOPATH=/usr/local/gopath
 export PATH=$PATH:$GOPATH/bin
+
+# Install gitvm from GitHub
 go install github.com/open-gitagent/gitvm/cmd/gitvm-node@latest
 go install github.com/open-gitagent/gitvm/cmd/gitvm@latest
 
 # Start gitvm-node
-GITVM_RUNTIME=%s exec gitvm-node \
+GITVM_RUNTIME=%s exec $GOPATH/bin/gitvm-node \
   --control-plane %s \
   --node-key %s \
   --name %s
